@@ -121,10 +121,14 @@ class CodexClient:
 
     def _build_argv(
         self,
-        prompt: str,
         cwd: Path | None,
         last_message_path: Path,
     ) -> list[str]:
+        """Build argv WITHOUT prompt — prompt is piped via stdin.
+
+        See CodexSession._build_argv for rationale (ARG_MAX limit on
+        long prompts).
+        """
         argv: list[str] = [self.binary, "exec"]
         if self.model:
             argv += ["--model", self.model]
@@ -138,7 +142,7 @@ class CodexClient:
             argv += ["--ephemeral"]
         argv += ["--output-last-message", str(last_message_path)]
         argv += self.extra_args
-        argv.append(prompt)
+        # No positional PROMPT → codex reads from stdin.
         return argv
 
     def run(
@@ -160,21 +164,25 @@ class CodexClient:
         try:
             snap_before = _snapshot_tree(cwd_path) if cwd_path else {}
             argv = self._build_argv(
-                prompt=prompt,
                 cwd=cwd_path,
                 last_message_path=last_message_path,
             )
             timeout = timeout_sec if timeout_sec is not None else self.timeout_sec
 
-            log.info("codex.run cwd=%s timeout=%s", cwd_path, timeout)
+            log.info(
+                "codex.run cwd=%s timeout=%s prompt_chars=%d",
+                cwd_path, timeout, len(prompt),
+            )
             log.debug("codex.run cmd=%s", argv)
 
             t0 = time.monotonic()
             sub_env = os.environ.copy()
             sub_env.update(self.extra_env)
             try:
+                # Prompt via stdin (avoids ARG_MAX).
                 completed = subprocess.run(
                     argv,
+                    input=prompt,
                     capture_output=True,
                     text=True,
                     timeout=timeout,
@@ -296,7 +304,16 @@ class CodexSession:
         argv += self.extra_args
         return argv
 
-    def _build_argv(self, prompt: str, last_msg_path: Path) -> list[str]:
+    def _build_argv(self, last_msg_path: Path) -> list[str]:
+        """Build argv WITHOUT the prompt — prompt is piped via stdin.
+
+        codex CLI semantics:
+        - `codex exec` with no positional PROMPT → reads instructions
+          from stdin
+        - `codex exec resume <session_id> -` → reads prompt from stdin
+        Long prompts via argv hit the OS ARG_MAX limit and produce
+        OSError(Errno 7, "Argument list too long"); stdin is unlimited.
+        """
         argv: list[str] = [self.binary, "exec"]
         if self.session_id is not None:
             argv.append("resume")
@@ -304,7 +321,7 @@ class CodexSession:
         argv += ["--output-last-message", str(last_msg_path)]
         if self.session_id is not None:
             argv.append(self.session_id)
-        argv.append(prompt)
+            argv.append("-")  # 'resume' requires explicit `-` to mean stdin
         return argv
 
     def send(
@@ -320,15 +337,16 @@ class CodexSession:
 
         try:
             snap_before = _snapshot_tree(self.cwd)
-            argv = self._build_argv(prompt, last_msg_path)
+            argv = self._build_argv(last_msg_path)
             timeout = timeout_sec if timeout_sec is not None else self.timeout_sec
 
             log.info(
-                "CodexSession.send cwd=%s sandbox=%s turn=%d session=%s",
+                "CodexSession.send cwd=%s sandbox=%s turn=%d session=%s prompt_chars=%d",
                 self.cwd,
                 self.sandbox,
                 self.turn_count + 1,
                 self.session_id or "<new>",
+                len(prompt),
             )
             log.debug("CodexSession.send cmd=%s", argv)
 
@@ -336,8 +354,11 @@ class CodexSession:
             sub_env = os.environ.copy()
             sub_env.update(self.extra_env)
             try:
+                # Prompt piped via stdin — argv would hit ARG_MAX for
+                # long graph-summary prompts (~100K chars).
                 completed = subprocess.run(
                     argv,
+                    input=prompt,
                     capture_output=True,
                     text=True,
                     timeout=timeout,
