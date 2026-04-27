@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent_session"
+version = "0.1.0"
+description = "Uniform multi-turn session abstraction over CLI coding agents (Claude Code, Codex)."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+authors = [{ name = "yingluosanqian" }]
+keywords = ["claude", "codex", "agent", "llm", "cli"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/yingluosanqian/agent_session"
+Repository = "https://github.com/yingluosanqian/agent_session"
+Issues = "https://github.com/yingluosanqian/agent_session/issues"
+
+[tool.setuptools.packages.find]
+include = ["agent_session*"]
+exclude = ["tests*"]
